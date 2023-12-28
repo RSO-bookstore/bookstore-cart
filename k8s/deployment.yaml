@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bookstore-cart-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bookstore-cart
+  template:
+    metadata:
+      labels:
+        app: bookstore-cart
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      containers:
+        - image: jasakerec/bookstore-cart:latest
+          name: bookstore-cart
+          env:
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: DB_URL
+          ports:
+            - containerPort: 8080
+              name: server
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: server
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: server
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 10
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: bookstore-cart
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 8080 # The port on which the service will be exposed
+      protocol: TCP
+      targetPort: 8080  # The port on which the FastAPI app is running in the container
+  selector:
+    app: bookstore-cart
