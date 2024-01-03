@@ -49,7 +49,7 @@ kind: Service
 metadata:
   name: bookstore-cart
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   ports:
     - port: 8080 # The port on which the service will be exposed
       protocol: TCP

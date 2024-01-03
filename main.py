@@ -35,7 +35,8 @@ app = FastAPI(title=APP_METADATA['title'],
               summary=APP_METADATA['summary'], 
               description=APP_METADATA['description'], 
               contact=APP_METADATA['contact'],
-              openapi_tags=APP_METADATA['tags_metadata'])
+              openapi_tags=APP_METADATA['tags_metadata'],
+              root_path="/bookstore-cart")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
