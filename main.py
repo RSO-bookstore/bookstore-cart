@@ -34,7 +34,6 @@ CONFIG = Config()
 app = FastAPI(title=APP_METADATA['title'], 
               summary=APP_METADATA['summary'], 
               description=APP_METADATA['description'], 
-              version=APP_METADATA['version'], 
               contact=APP_METADATA['contact'],
               openapi_tags=APP_METADATA['tags_metadata'])
 
