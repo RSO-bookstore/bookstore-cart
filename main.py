@@ -2,6 +2,7 @@ import os
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException, Response, status
 from sqlmodel import Field, Session, SQLModel, create_engine, select
+from fastapi_utils.tasks import repeat_every
 import os
 from pydantic import BaseModel
 from dotenv import dotenv_values
@@ -72,6 +73,7 @@ class Books(SQLModel, table=True):
     stock_quantity: int
 
 @app.on_event("startup")
+@repeat_every(seconds=5)
 def reload_config():
     global CONFIG
     logger.info(f"app={CONFIG.app_name} version={CONFIG.version} | Reloading config")
