@@ -29,8 +29,8 @@ class Config:
     # Read from ENV
     db_url = os.getenv('DB_URL', default=db_url)
     app_name = os.getenv('APP_NAME', default=app_name)
-    catalog_host = os.getenv('BOOKSTORE_CATALOG_HOST', default=catalog_host)
-    catalog_port = os.getenv('BOOKSTORE_CATALOG_PORT', default=catalog_port)
+    catalog_host = os.getenv('BOOKSTORE_CATALOG_SERVICE_HOST', default=catalog_host)
+    catalog_port = os.getenv('BOOKSTORE_CATALOG_SERVICE_PORT', default=catalog_port)
 
     catalog_url = f'{catalog_host}:{catalog_port}'
     broken: bool = False
@@ -102,8 +102,8 @@ def reload_config():
     # Read from ENV
     db_url = os.getenv('DB_URL', default=db_url)
     app_name = os.getenv('APP_NAME', default=app_name)
-    catalog_host = os.getenv('BOOKSTORE_CATALOG_HOST', default=catalog_host)
-    catalog_port = os.getenv('BOOKSTORE_CATALOG_PORT', default=catalog_port)
+    catalog_host = os.getenv('BOOKSTORE_CATALOG_SERVICE_HOST', default=catalog_host)
+    catalog_port = os.getenv('BOOKSTORE_CATALOG_SERVICE_PORT', default=catalog_port)
     catalog_url = f'{catalog_host}:{catalog_port}'
 
     if db_url != None:
