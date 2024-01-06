@@ -1,6 +1,7 @@
 import os
 from typing import Optional
 from fastapi import FastAPI, Request, HTTPException, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 from fastapi_utils.tasks import repeat_every
 import os
@@ -11,11 +12,14 @@ import time
 import uuid
 from enum import Enum
 from app_metadata import APP_METADATA
+import requests
 
 class Config:
     db_url: str = None
     app_name: str = "bookstore_cart"
     version: str = "v1"
+    catalog_host: str = 'http://localhost'
+    catalog_port: str = '8000'
     # Read from .env file
     try:
         db_url = dotenv_values('.env')['DB_URL']
@@ -25,7 +29,10 @@ class Config:
     # Read from ENV
     db_url = os.getenv('DB_URL', default=db_url)
     app_name = os.getenv('APP_NAME', default=app_name)
+    catalog_host = os.getenv('BOOKSTORE_CATALOG_HOST', default=catalog_host)
+    catalog_port = os.getenv('BOOKSTORE_CATALOG_PORT', default=catalog_port)
 
+    catalog_url = f'{catalog_host}:{catalog_port}'
     broken: bool = False
 
 logger = logging.getLogger('uvicorn')
@@ -37,6 +44,14 @@ app = FastAPI(title=APP_METADATA['title'],
               contact=APP_METADATA['contact'],
               openapi_tags=APP_METADATA['tags_metadata'],
               root_path="/bookstore-cart")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -63,14 +78,10 @@ class Cart(SQLModel, table=True):
     user_id: int
     quantity: int
 
-class Books(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    title: str
-    author: str
-    genre: str
-    description: str
-    price: int
-    stock_quantity: int
+def get_book(id: int):
+    url = f'{CONFIG.catalog_url}/books/{id}'
+    book = requests.get(url=url).json()
+    return book
 
 @app.on_event("startup")
 @repeat_every(seconds=5)
@@ -80,6 +91,8 @@ def reload_config():
 
     db_url = None
     app_name = None
+    catalog_host: str = None
+    catalog_port: str = None
     # Read from .env file
     try:
         db_url = dotenv_values('.env')['DB_URL']
@@ -89,18 +102,32 @@ def reload_config():
     # Read from ENV
     db_url = os.getenv('DB_URL', default=db_url)
     app_name = os.getenv('APP_NAME', default=app_name)
+    catalog_host = os.getenv('BOOKSTORE_CATALOG_HOST', default=catalog_host)
+    catalog_port = os.getenv('BOOKSTORE_CATALOG_PORT', default=catalog_port)
+    catalog_url = f'{catalog_host}:{catalog_port}'
 
-    if db_url != None and app_name != None:
+    if db_url != None:
         CONFIG.db_url = db_url
+    else:
+        raise KeyError('No DB URL specified in ENV...')
+    
+    if app_name != None:
         CONFIG.app_name = app_name
     else:
-        raise KeyError('No DB URL or APP NAME specified in ENV...')
+        raise KeyError('No APP NAME specified in ENV...')
 
+    if catalog_port != None and catalog_host != None:
+        CONFIG.catalog_host = catalog_host
+        CONFIG.catalog_port = catalog_port
+        CONFIG.catalog_url = catalog_url
 
 if CONFIG.db_url == None:
     raise KeyError('No DB URL specified in ENV...')
 
-engine = create_engine(CONFIG.db_url, echo=True)
+if CONFIG.catalog_url == None:
+    raise KeyError('No BOOKSTORE CATALOG URL specified in ENV...')
+
+engine = create_engine(CONFIG.db_url)
 
 @app.get("/")
 def read_root():
@@ -112,7 +139,8 @@ def get_all_shopping_carts(response: Response):
         carts = session.exec(select(Cart)).all()
         res = []
         for cart in carts:
-            book = session.exec(select(Books).where(Books.id == cart.book_id)).one()
+            book = get_book(cart.book_id)
+            # book = session.exec(select(Books).where(Books.id == cart.book_id)).one()
             res.append({'id': cart.id, 'user_id': cart.user_id, 'quantity': cart.quantity, 'book': book})
         response.status_code = status.HTTP_200_OK
         return res
@@ -123,17 +151,44 @@ def get_shopping_cart(id: int, response: Response):
     with Session(engine) as session:
         cart = session.exec(select(Cart).where(Cart.user_id == id)).all()
         res = []
+        price = 0
         for c in cart:
-            book = session.exec(select(Books).where(Books.id == c.book_id)).one()
-            res.append({'id': c.id, 'user_id': c.user_id, 'quantity': c.quantity, 'book': book})
+            book = get_book(c.book_id)
+            # book = session.exec(select(Books).where(Books.id == c.book_id)).one()
+            res.append({'id': c.id, 'user_id': c.user_id, 'quantity': c.quantity, 'book': book, 'price': c.quantity * book['price']})
+            price += c.quantity * book['price']
         response.status_code = status.HTTP_200_OK
-        return res
+        return {'cart': res, 'price': price}
 
 @app.post('/cart/{user_id}', tags=['cart'])
 def add_new_item_to_shopping_cart(user_id: int, newItem: NewItem, response: Response):
+    print(newItem)
     with Session(engine) as session:
-        cart = Cart(user_id=user_id, book_id=newItem.book_id, quantity=newItem.quantity)
+        cart = session.exec(select(Cart).where(Cart.user_id == user_id).where(Cart.book_id == newItem.book_id)).one_or_none()
+        print(cart)
+        if cart != None:
+            cart.quantity += newItem.quantity
+        else:
+            cart = Cart(user_id=user_id, book_id=newItem.book_id, quantity=newItem.quantity)
+        print(cart)
         session.add(cart)
+        session.commit()
+        response.status_code = status.HTTP_201_CREATED
+        return cart
+    
+@app.delete('/cart/{user_id}/{book_id}', tags=['cart'])
+def delete_item_from_shopping_cart(user_id: int, book_id: int, response: Response):
+    with Session(engine) as session:
+        cart = session.exec(select(Cart).where(Cart.user_id == user_id).where(Cart.book_id == book_id)).one_or_none()
+        if cart == None:
+            response.status_code = status.HTTP_200_OK
+        else:
+            cart.quantity = max(0, cart.quantity - 1)
+        
+        if cart.quantity == 0:
+            session.delete(cart)
+        else:
+            session.add(cart)
         session.commit()
         response.status_code = status.HTTP_200_OK
         return cart
