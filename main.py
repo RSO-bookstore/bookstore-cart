@@ -32,7 +32,7 @@ class Config:
     catalog_host = os.getenv('BOOKSTORE_CATALOG_SERVICE_HOST', default=catalog_host)
     catalog_port = os.getenv('BOOKSTORE_CATALOG_SERVICE_PORT', default=catalog_port)
 
-    catalog_url = f'{catalog_host}:{catalog_port}'
+    catalog_url = f'http://{catalog_host}:{catalog_port}'
     broken: bool = False
 
 logger = logging.getLogger('uvicorn')
@@ -104,7 +104,7 @@ def reload_config():
     app_name = os.getenv('APP_NAME', default=app_name)
     catalog_host = os.getenv('BOOKSTORE_CATALOG_SERVICE_HOST', default=catalog_host)
     catalog_port = os.getenv('BOOKSTORE_CATALOG_SERVICE_PORT', default=catalog_port)
-    catalog_url = f'{catalog_host}:{catalog_port}'
+    catalog_url = f'http://{catalog_host}:{catalog_port}'
 
     if db_url != None:
         CONFIG.db_url = db_url
