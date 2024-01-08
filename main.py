@@ -18,7 +18,7 @@ class Config:
     db_url: str = None
     app_name: str = "bookstore_cart"
     version: str = "v1"
-    catalog_host: str = 'http://localhost'
+    catalog_host: str = 'localhost'
     catalog_port: str = '8000'
     # Read from .env file
     try:
@@ -43,7 +43,8 @@ app = FastAPI(title=APP_METADATA['title'],
               description=APP_METADATA['description'], 
               contact=APP_METADATA['contact'],
               openapi_tags=APP_METADATA['tags_metadata'],
-              root_path="/bookstore-cart")
+              root_path="/bookstore-cart" if CONFIG.catalog_host != 'localhost' else "",
+              docs_url='/openapi')
 
 app.add_middleware(
     CORSMiddleware,
@@ -59,6 +60,8 @@ async def log_requests(request: Request, call_next):
     logger.info(f"method={str.upper(request.method)} rid={idem} app={CONFIG.app_name} version={CONFIG.version} START_REQUEST path={request.url.path}")
     start_time = time.time()
     
+    # add request id to the request
+    request.state.rid = str(idem)
     response = await call_next(request)
     
     process_time = (time.time() - start_time) * 1000
@@ -78,9 +81,9 @@ class Cart(SQLModel, table=True):
     user_id: int
     quantity: int
 
-def get_book(id: int):
+def get_book(id: int, rid: str):
     url = f'{CONFIG.catalog_url}/books/{id}'
-    book = requests.get(url=url).json()
+    book = requests.get(url=url, headers={'rid': rid}).json()
     return book
 
 @app.on_event("startup")
@@ -134,12 +137,13 @@ def read_root():
     return {"Hello": "World", "app_name": CONFIG.app_name}
 
 @app.get("/cart", tags=['cart'])
-def get_all_shopping_carts(response: Response):
+def get_all_shopping_carts(request: Request, response: Response):
+    rid = request.state.rid
     with Session(engine) as session:
         carts = session.exec(select(Cart)).all()
         res = []
         for cart in carts:
-            book = get_book(cart.book_id)
+            book = get_book(cart.book_id, rid)
             # book = session.exec(select(Books).where(Books.id == cart.book_id)).one()
             res.append({'id': cart.id, 'user_id': cart.user_id, 'quantity': cart.quantity, 'book': book})
         response.status_code = status.HTTP_200_OK
@@ -147,13 +151,14 @@ def get_all_shopping_carts(response: Response):
 
 
 @app.get("/cart/{id}", tags=['cart'])
-def get_shopping_cart(id: int, response: Response):
+def get_shopping_cart(request: Request, id: int, response: Response):
+    rid = request.state.rid
     with Session(engine) as session:
         cart = session.exec(select(Cart).where(Cart.user_id == id)).all()
         res = []
         price = 0
         for c in cart:
-            book = get_book(c.book_id)
+            book = get_book(c.book_id, rid)
             # book = session.exec(select(Books).where(Books.id == c.book_id)).one()
             res.append({'id': c.id, 'user_id': c.user_id, 'quantity': c.quantity, 'book': book, 'price': c.quantity * book['price']})
             price += c.quantity * book['price']
