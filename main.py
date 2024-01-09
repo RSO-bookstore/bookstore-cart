@@ -74,12 +74,27 @@ class NewItem(BaseModel):
     book_id: int
     quantity: int
 
+class NewOrder(BaseModel):
+    name: str
+    surname: str
+    post_code: int
+    address: str
+    city: str
 
 class Cart(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     book_id: int
     user_id: int
     quantity: int
+
+class Orders(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int
+    name: str
+    surname: str
+    post_code: int
+    address: str
+    city: str
 
 def get_book(id: int, rid: str):
     url = f'{CONFIG.catalog_url}/books/{id}'
@@ -197,6 +212,109 @@ def delete_item_from_shopping_cart(user_id: int, book_id: int, response: Respons
         session.commit()
         response.status_code = status.HTTP_200_OK
         return cart
+
+@app.get('/orders', tags=['orders'])
+def get_all_orders(request: Request, response: Response):
+    rid = request.state.rid
+    with Session(engine) as session:
+        res = []
+        orders = session.exec(select(Orders)).all()
+        for order in orders:
+            user = order.user_id
+            cart = session.exec(select(Cart).where(Cart.user_id == user)).all()
+            user_cart = []
+            price = 0
+            for c in cart:
+                book = get_book(c.book_id, rid)
+                user_cart.append({'id': c.id, 'user_id': c.user_id, 'quantity': c.quantity, 'book': book, 'price': c.quantity * book['price']})
+                price += c.quantity * book['price']
+            res.append({
+                'user_id': user,
+                 'id': order.id,
+                 'name': order.name,
+                 'surname': order.surname,
+                 'post_code': order.post_code,
+                 'address': order.address,
+                 'city': order.city,
+                 'price': price,
+                 'cart': user_cart
+            })
+        response.status_code = status.HTTP_200_OK
+        return res
+
+
+@app.get('/orders/{user_id}', tags=['orders'])
+def get_user_order(user_id: int, request: Request, response: Response):
+    rid = request.state.rid
+    with Session(engine) as session:
+        res = []
+        orders = session.exec(select(Orders).where(Orders.user_id == user_id)).all()
+        for order in orders:
+            user = order.user_id
+            cart = session.exec(select(Cart).where(Cart.user_id == user)).all()
+            user_cart = []
+            price = 0
+            for c in cart:
+                book = get_book(c.book_id, rid)
+                user_cart.append({'id': c.id, 'user_id': c.user_id, 'quantity': c.quantity, 'book': book, 'price': c.quantity * book['price']})
+                price += c.quantity * book['price']
+            res.append({
+                'user_id': user,
+                 'id': order.id,
+                 'name': order.name,
+                 'surname': order.surname,
+                 'post_code': order.post_code,
+                 'address': order.address,
+                 'city': order.city,
+                 'price': price,
+                 'cart': user_cart
+            })
+        response.status_code = status.HTTP_200_OK
+        return res
+    
+@app.post('/orders/{user_id}', tags=['orders'])
+def create_new_order(request: Request, user_id: int, newOrder: NewOrder, response: Response):
+    with Session(engine) as session:
+        carts = session.exec(select(Cart).where(Cart.user_id == user_id)).all()
+        if (len(carts) == 0 or carts is None):
+            return
+        order = Orders(user_id=user_id, name=newOrder.name, surname=newOrder.surname, post_code=newOrder.post_code, address=newOrder.address, city=newOrder.city)
+        session.add(order)
+        session.commit()
+        response.status_code = status.HTTP_201_CREATED
+        return order
+    
+@app.delete('/orders/{order_id}', tags=['orders'])
+def delete_order(order_id: int, response: Response):
+    with Session(engine) as session:
+        order = session.exec(select(Orders).where(Orders.id == order_id)).one_or_none()
+        if order is None:
+            response.status_code = status.HTTP_200_OK
+            return None
+        
+        session.delete(order)
+        session.commit()
+        response.status_code = status.HTTP_200_OK
+        return None
+    
+@app.put('/orders/{order_id}', tags=['orders'])
+def update_order_info(order_id: int, updatedOrder: NewOrder, response: Response):
+    with Session(engine) as session:
+        order = session.exec(select(Orders).where(Orders.id == order_id)).one_or_none()
+        if order is None:
+            response.status_code = status.HTTP_404_NOT_FOUND
+            return None
+        order.name = updatedOrder.name
+        order.surname = updatedOrder.surname
+        order.post_code = updatedOrder.post_code
+        order.address = updatedOrder.address
+        order.city = updatedOrder.city
+
+        session.add(order)
+        session.commit()
+        response.status_code = status.HTTP_201_CREATED
+        return order
+
 
 @app.get("/health/live", tags=['healthchecks'])
 async def get_health_live(response: Response):

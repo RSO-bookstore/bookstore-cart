@@ -15,6 +15,10 @@ APP_METADATA={
         {
             'name': 'healthchecks',
             'description': 'Operations for perfoming health checks.'
+        },
+        {
+            'name': 'orders',
+            'description': 'Operations for orders management'
         }
     ]
 }
